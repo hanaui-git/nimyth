@@ -8,7 +8,7 @@ git clone https://github.com/hanaui-git/nimyth
 ```
 NpmJS:
 ```
-npm i randomstring randombytes readline-sync request-async clipboardy@1.2.3 sovrin-did is-online8.5.1 moment chalk@2.4.2 fs
+npm i randomstring randombytes readline-sync request-async clipboardy@1.2.3 sovrin-did dialogy moment chalk@2.4.2 fs csv-stringify dialogy util
 ```
 
 ## Usage
