@@ -9,10 +9,14 @@
     const request = require("request-async")
     const clipboardy = require("clipboardy")
     const sovrinDID = require("sovrin-did")
-    const isOnline = require("is-online")
+    const { promisify } = require("util")
+    var csv = require("csv-stringify")
+    const dialogy = require("dialogy")
     const moment = require("moment")
     const chalk = require("chalk")
     const fs = require("fs")
+
+    csv.stringify = promisify(csv.stringify)
     
     // Variables
     var nimyth = {
@@ -149,7 +153,7 @@
             nimyth.log("i", "Safely exiting...")
             setTimeout(()=>{
                 process.exit()
-            }, 4000)
+            }, 1000)
         })
     }
 
@@ -223,6 +227,7 @@
         generate                    Generate a password.
         history                     Show generated passwords.
         add                         Add the password that you want to add in passwords history.
+        export                      Export your passwords in plain.
         flush                       Clear all passwords that had been stored.
         exit                        Exit Nimyth.
                         `)
@@ -282,6 +287,51 @@
             
             await nimyth.savePassword(password, true)
             nimyth.log("i", "Password has been saved.")
+        }else if(commandArgs[0] === "export"){
+            if(!nimyth.passwords.self.length){
+                nimyth.log("i", "No passwords found to export.")
+                return nimyth.navigation()
+            }
+
+            if(!commandArgs[1]){
+                nimyth.log("i", "usage: export <type(json/csv)>")
+                return nimyth.navigation()
+            }
+
+            if(commandArgs[1] === "json"){
+                const outputFilePath = dialogy.saveFile({
+                    filter: {
+                        patterns: ["*.json"],
+                        description: "JSON"
+                    }
+                })
+
+                fs.writeFileSync(`${outputFilePath}.json`, JSON.stringify(nimyth.passwords.self), "utf8")
+                nimyth.log("i", "Passwords has been exported.")
+            }else if(commandArgs[1] === "csv"){
+                const outputFilePath = dialogy.saveFile({
+                    filter: {
+                        patterns: ["*.csv"],
+                        description: "CSV"
+                    }
+                })
+
+                var data = [
+                    [
+                        "Password",
+                        "Date"
+                    ]
+                ]
+
+                for( const password of nimyth.passwords.self ) data.push([password.password, password.date])
+
+                data = await csv.stringify(data)
+
+                fs.writeFileSync(`${outputFilePath}.csv`, data, "utf8")
+                nimyth.log("i", "Passwords has been exported.")
+            }else{
+                nimyth.log("e", "Invalid export type.")
+            }
         }else if(command === "flush"){
             return setTimeout(()=>{
                 const youSure = readLine.question(`Are you sure you want to flush(y/n)? ${options.cli.navigationStyle} `)
