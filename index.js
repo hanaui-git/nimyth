@@ -20,7 +20,7 @@
     
     // Variables
     var nimyth = {
-        serverURL: "https://nimyth.vercel.app/",
+        serverURL: "https://nimyth-server.vercel.app/", // http://localhost:8080/
         password: null,
         passwords: {
             correctPassword: "ID:19515LZWYZ",
