@@ -8,7 +8,7 @@ git clone https://github.com/hanaui-git/nimyth
 ```
 NpmJS:
 ```
-npm i randomstring randombytes readline-sync request-async clipboardy@1.2.3 sovrin-did dialogy moment chalk@2.4.2 fs csv-stringify dialogy util
+npm i xchacha20-js randomstring randombytes readline-sync request-async clipboardy@1.2.3 js-string-compression hqc dialogy moment chalk@2.4.2 fs csv-stringify dialogy util
 ```
 
 ## Usage
@@ -20,14 +20,14 @@ node index.js
 ### How secure is Nimyth?
 Nimyth is really secure in fact It uses XCHACHA20, End to End encryption, AES256 and at the same time a custom cipher. To make it 10x secure increase the characters of the keys in the server and obfuscate the code.
 
-### Is the current server of Nimyth secure?
-Yes, It uses a key that is 80+ characters(I can't say the length of the other keys for security reasons) and the code is highly obfuscated(Private) even I, don't know the keys and It also has a good custom cipher. But If you are privacy paranoid you can host your own [server](https://github.com/hanaui-git/nimyth-server).
-
 ### How can I change Nimyth server?
 Open index.js and search **serverURL**.
 
 ### How can I see Nimyth options?
 Open options.json
+
+## Note
+Please change the keys in options.json > security and nonce length should be 24 and xChaChaKey length should be 32
 
 ## License
 MIT © Hanaui

@@ -1,10 +1,14 @@
 {
+    "security": {
+        "secondLayerKey": "I... AM THE SECOND LAYER",
+        "adminKey": "secret Boi :)",
+        "xChaChaKey": "/R-gVg3RJ{Ge8.w3Tk\"iz$T)j56R*Df`",
+        "nonce": "}M,%+>3:35%CIe^K>hdu1G/k"
+    },
     "accessibility": {
         "autoClipboard": false,
-        "passwordHistory": true
-    },
-    "others": {
-        "passwordsAutoSaveDelay": 3000
+        "passwordHistory": true,
+        "databaseSupport": false
     },
     "cli": {
         "navigationStyle": "{>}"
@@ -20,5 +24,8 @@
             "error": "*",
             "critical": "*"
         }
+    },
+    "others": {
+        "passwordsAutoSaveDelay": 3000
     }
 }

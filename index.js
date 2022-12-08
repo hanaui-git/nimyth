@@ -2,38 +2,42 @@
     "use strict";
 
     // Dependencies
+    var xchacha20 = require("xchacha20-js").XChaCha20
     const nimythModule = require("./modules/nimyth")
+    const simpleAES256 = require("simple-aes-256")
+    const jsc = require("js-string-compression")
     const randomString = require("randomstring")
+    const shuffleSeed = require("shuffle-seed")
     const randomBytes = require("randombytes")
     const readLine = require("readline-sync")
     const request = require("request-async")
     const clipboardy = require("clipboardy")
-    const sovrinDID = require("sovrin-did")
     const { promisify } = require("util")
     var csv = require("csv-stringify")
     const dialogy = require("dialogy")
     const moment = require("moment")
     const chalk = require("chalk")
+    const hqc = require("hqc")
     const fs = require("fs")
 
     csv.stringify = promisify(csv.stringify)
     
     // Variables
+    xchacha20 = new xchacha20()
+    
     var nimyth = {
-        serverURL: "https://nimyth-server.vercel.app/", // http://localhost:8080/
+        serverURL: "http://localhost:8080/", // https://nimyth-server.vercel.app/
         password: null,
         passwords: {
-            correctPassword: "ID:19515LZWYZ",
             self: []
         }
     }
     
     const options = require("./options.json")
-    
-    const sovrin = sovrinDID.gen()
-    const nonce = sovrinDID.getNonce()
-    const signKey = sovrin.secret.signKey
-    const keyPair = sovrinDID.getKeyPairFromSignKey(signKey)
+    const hm = new jsc.Hauffman()
+
+    var hqcData = {}
+    var serverPK;
     
     // High Functions
     nimyth.log = function(type, message){
@@ -49,10 +53,16 @@
     }
 
     // Startup
-    nimyth.log("i", "Grabbing server public key, please wait...")
-    var serverPK = await request(`${nimyth.serverURL}pk`)
-    serverPK = JSON.parse(serverPK.body).pk
-    serverPK = Uint8Array.from(serverPK.split(",").map(x=>parseInt(x,10)))
+    if(options.accessibility.databaseSupport){
+        nimyth.log("i", "Grabbing server public key, please wait...")
+        serverPK = await request(`${nimyth.serverURL}pk`)
+        serverPK = JSON.parse(serverPK.body).data.split(",").map(x=>parseInt(x,10))
+
+        const { cyphertext, secret } = await hqc.encrypt(serverPK)
+
+        hqcData.cyphertext = cyphertext
+        hqcData.secret = secret
+    }
 
     // Functions
     nimyth.clipboard = function(password){
@@ -88,49 +98,37 @@
         })
     }
 
+    nimyth.customEncrypt = function(string){
+        return shuffleSeed.shuffle(string.split(""), options.security.secondLayerKey).join("")
+    }
+
+    nimyth.customDecrypt = function(encryptedString){
+        return shuffleSeed.unshuffle(encryptedString.split(""), options.security.secondLayerKey).join("")
+    }
+
     nimyth.encrypt = function(string){
         return new Promise(async(resolve)=>{
-            var response = await request.post(`${nimyth.serverURL}e`, {
-                headers: {
-                    "content-type": "application/json"
-                },
-                body: JSON.stringify({ pk: keyPair.publicKey.toString(), a: nonce.toString(), s: sovrinDID.encryptMessage(JSON.stringify({ string: string, password: nimyth.password }), nonce, sovrinDID.getSharedSecret(serverPK, keyPair.secretKey)).toString() })
-            })
+            var encryptedString = await xchacha20.encrypt(string, new Buffer.from(options.security.nonce), new Buffer.from(options.security.xChaChaKey), 1)
+            encryptedString = new Buffer.from(encryptedString).toString("hex")
+            encryptedString = new Buffer.from(simpleAES256.encrypt(nimyth.password, encryptedString)).toString("hex")
+            encryptedString = nimyth.customEncrypt(encryptedString)
 
-            if(response.body.match("Unknown error. | 91681HZWgZ")){
-                nimyth.log("c", "Unknown error.")
-                process.exit()
-            }
-
-            response = JSON.parse(response.body)
-            response.pk = Uint8Array.from(response.pk.split(",").map(x=>parseInt(x,10)))
-            response.a = Uint8Array.from(response.a.split(",").map(x=>parseInt(x,10)))
-            response.s = Uint8Array.from(response.s.split(",").map(x=>parseInt(x,10)))
-
-            resolve(sovrinDID.decryptMessage(response.s, response.a, sovrinDID.getSharedSecret(response.pk, keyPair.secretKey)).toString())
+            resolve(encryptedString)
         })
     }
 
     nimyth.decrypt = function(encryptedString){
         return new Promise(async(resolve)=>{
-            var response = await request.post(`${nimyth.serverURL}d`, {
-                headers: {
-                    "content-type": "application/json"
-                },
-                body: JSON.stringify({ pk: keyPair.publicKey.toString(), a: nonce.toString(), s: sovrinDID.encryptMessage(JSON.stringify({ string: encryptedString, password: nimyth.password }), nonce, sovrinDID.getSharedSecret(serverPK, keyPair.secretKey)).toString() })
-            })
+            try{
+                var decryptedString = nimyth.customDecrypt(encryptedString)
+                decryptedString = new Buffer.from(simpleAES256.decrypt(nimyth.password, new Buffer.from(decryptedString, "hex"))).toString()
+                decryptedString = await xchacha20.decrypt(new Buffer.from(decryptedString, "hex"), new Buffer.from(options.security.nonce), new Buffer.from(options.security.xChaChaKey), 1)
+                decryptedString = decryptedString.toString()
 
-            if(response.body.match("Unknown error. | 91681HZWgZ")){
-                nimyth.log("c", "Unknown error.")
-                process.exit()
+                resolve(decryptedString)
+            }catch{
+                resolve(false)
             }
-
-            response = JSON.parse(response.body)
-            response.pk = Uint8Array.from(response.pk.split(",").map(x=>parseInt(x,10)))
-            response.a = Uint8Array.from(response.a.split(",").map(x=>parseInt(x,10)))
-            response.s = Uint8Array.from(response.s.split(",").map(x=>parseInt(x,10)))
-
-            resolve(sovrinDID.decryptMessage(response.s, response.a, sovrinDID.getSharedSecret(response.pk, keyPair.secretKey)).toString())
         })
     }
     
@@ -146,11 +144,35 @@
         })
     }
 
+    nimyth.syncPasswords = function(){
+        return new Promise(async(resolve)=>{
+            const encryptedPasswords = await nimyth.encrypt(JSON.stringify(nimyth.passwords.self))
+
+            var response = await request.post(`${nimyth.serverURL}s`, {
+                headers: {
+                    "content-type": "application/json"
+                },
+                body: JSON.stringify({ cyphertext: hqcData.cyphertext.toString(),  data: hm.compress(simpleAES256.encrypt(hqcData.secret, encryptedPasswords).toString("hex")) })
+            })
+
+            if(JSON.parse(response.body).data){
+                nimyth.log("i", "Passwords successfully sync.")
+            }else{
+                nimyth.log("c", "Unable to sync passwords.")
+                process.exit()
+            }
+
+            resolve()
+        })
+    }
+
     nimyth.exit = function(){
         return new Promise(async(resolve)=>{
             await nimyth.writePasswords()
+
+            if(serverPK) await nimyth.syncPasswords()
     
-            nimyth.log("i", "Safely exiting...")
+            nimyth.log("i", "Exiting safely...")
             setTimeout(()=>{
                 process.exit()
             }, 1000)
@@ -161,19 +183,43 @@
         return new Promise(async(resolve)=>{
             nimyth.log("i", "Loading passwords, please wait...")
 
-            const encryptedPasswords = fs.readFileSync("./database/passwords.txt", "utf8")
+            var encryptedPasswords = fs.readFileSync("./database/passwords.txt", "utf8")
 
             if(options.accessibility.passwordHistory || encryptedPasswords){
                 if(encryptedPasswords){
                     const decryptedPasswords = await nimyth.decrypt(encryptedPasswords, nimyth.password)
                     
-                    if(!decryptedPasswords.match("ID:19515LZWYZ")){
+                    if(!decryptedPasswords){
                         nimyth.log("c", "Invalid password.")
-
-                        return process.exit()
+                        process.exit()
                     }
 
                     nimyth.passwords = JSON.parse(decryptedPasswords)
+                }else{
+                    if(options.accessibility.databaseSupport){
+                        try{
+                            var response = await request.post(`${nimyth.serverURL}gs`, {
+                                headers: {
+                                    "content-type": "application/json"
+                                },
+                                body: JSON.stringify({ cyphertext: hqcData.cyphertext.toString(),  data: hm.compress(simpleAES256.encrypt(hqcData.secret, JSON.stringify({ adminKey: options.security.adminKey })).toString("hex")) })
+                            })
+
+                            encryptedPasswords = JSON.parse(response.body).data
+
+                            if(encryptedPasswords && encryptedPasswords !== "a"){
+                                nimyth.passwords.self = JSON.parse(await nimyth.decrypt(encryptedPasswords, nimyth.password))
+                            }else{
+                                if(encryptedPasswords !== "a"){
+                                    nimyth.log("c", "Unable to load sync passwords.")
+                                    process.exit()
+                                }
+                            }
+                        }catch{
+                            nimyth.log("c", "Invalid password.")
+                            process.exit()
+                        }
+                    }
                 }
             }
 
